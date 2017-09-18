@@ -1,117 +1,160 @@
-#include <algorithm>
-#include <iostream>
-#include <map>
+#include "balancer.hpp"
+
+#include <gtest/gtest.h>
+
 #include <random>
-#include <string>
-#include <vector>
+#include <thread>
 
-using Object = std::map<std::string, int>;
+template<typename T>       // declaration only for TD;
+class TD;                  // TD == "Type Displayer"
 
-class ObjectList {
+struct Bytes {
 public:
-  using iterator = std::vector<Object::iterator>::iterator;
-  using list_type = std::vector<Object::iterator>;
-
-  void clear() {
-    list.clear();
-    weight = 0;
-  }
-  void assign(Object::iterator &item) {
-    list.push_back(item);
-    weight += item->second;
-  }
-  bool operator<(const ObjectList &other) const {
-    return weight < other.weight;
-  }
-  bool operator>(const ObjectList &other) const {
-    return weight > other.weight;
-  }
-
-  std::vector<Object::iterator> list;
-  int weight{0};
+  int bytes{0};
 };
 
-void generate_object(Object &obj, const int n_elem) {
+class Status_stub {
+public:
+  void assign_weight(const int &i) { weight.bytes = i; }
+  const Bytes &get() { return weight; }
+
+private:
+  Bytes weight;
+};
+
+class ObjectType {
+public:
+  void assign_weight(const int &i) { status_.assign_weight(i); }
+  Status_stub &status() { return status_; }
+
+private:
+  Status_stub status_;
+};
+
+using ListType = std::map<std::string, ObjectType>;
+const size_t num_partitions{5};
+
+void generate_object_parabola(ListType &obj, const int n_elem) {
   for (int i = 0; i < n_elem; ++i) {
-    //    obj[std::to_string(i)] = i*i - 5*i + 7;
-    obj[std::to_string(i)] = std::abs(10000 / (i * i - 10.5));
+    obj[std::to_string(i)].assign_weight(i * i - 8. * i + 113.);
   }
 }
 
-void generate_object_random(Object &obj, const int n_elem) {
+void generate_object_harmonic(ListType &obj, const int n_elem) {
+  for (int i = 0; i < n_elem; ++i) {
+    obj[std::to_string(i)].assign_weight(std::abs(10000 / (i * i - 10.5)));
+  }
+}
+
+void generate_object_random(ListType &obj, const int n_elem) {
   std::default_random_engine generator;
   std::poisson_distribution<int> distribution(8);
   for (int i = 0; i < n_elem; ++i) {
-    obj[std::to_string(i)] = distribution(generator);
+    obj[std::to_string(i)].assign_weight(distribution(generator));
   }
 }
 
-void assign_to_ordered_list(Object &obj, ObjectList &sorted) {
-  for (auto o = obj.begin(); o != obj.end(); ++o) {
-    sorted.list.push_back(o);
+
+
+TEST(Partitioner, create_initial_array_one_element_per_partition) {
+  ListType object;
+  for (size_t i = 0; i < num_partitions; ++i) {
+    object[std::to_string(i + 1)] = ObjectType();
   }
-  std::sort(sorted.list.begin(), sorted.list.end(),
-            [](Object::iterator &first, Object::iterator &second) {
-              return first->second > second->second;
-            });
-}
 
-void partition(ObjectList::list_type &sorted, std::vector<ObjectList> &list) {
+  auto object_partition =
+      create_flat_partition(object, num_partitions);
 
-  for (auto o : sorted) {
-    auto min = std::min_element(
-        list.begin(), list.end(),
-        [](ObjectList &first, ObjectList &second) { return first < second; });
-    min->assign(o);
+  EXPECT_EQ(num_partitions, object_partition.size());
+  for (auto &o : object_partition) {
+    EXPECT_EQ(o.list.size(), size_t{1});
   }
 }
 
-void print(const std::vector<ObjectList> &list) {
-  for (auto &l : list) {
-    std::cout << l.weight << "  ->  ";
-    //<< " (" << l.list.size() << ")" << std::endl;
-    std::cout << "( ";
-    for (auto &o : l.list) {
-      std::cout << o->first << ",";
+TEST(Partitioner, create_initial_array_multiple_elements_per_partition) {
+  size_t n_objects = 2 * num_partitions + 3;
+  ListType object_list;
+  for (size_t i = 0; i < n_objects; ++i) {
+    object_list[std::to_string(i + 1)] = ObjectType();
+  }
+
+  auto object_partition =
+      create_flat_partition(object_list, num_partitions);
+  
+  EXPECT_EQ(num_partitions, object_partition.size());
+  size_t nelem{0};
+  for (auto &o : object_partition) {
+    nelem += o.list.size();
+  }
+  EXPECT_EQ(nelem, n_objects);
+}
+
+TEST(Partitioner, sort_list_by_bytes) {
+  size_t n_objects = 2 * num_partitions + 3;
+  ListType object_list;
+  for (size_t i = 0; i < n_objects; ++i) {
+    object_list[std::to_string(i + 1)] = ObjectType();
+  }
+  generate_object_parabola(object_list,n_objects);
+  
+  ObjectList<ListType> sorted_list;
+  assign_to_ordered_list(object_list, sorted_list);
+
+  for (size_t i = 1; i < n_objects; ++i) {
+    EXPECT_TRUE(sorted_list.list[i]->second.status().get().bytes <=
+                sorted_list.list[i - 1]->second.status().get().bytes);
+  }
+}
+
+TEST(Partitioner, all_elements_assigned) {
+  size_t n_objects = 2 * num_partitions + 3;
+  ListType object_list;
+  for (size_t i = 0; i < n_objects; ++i) {
+    object_list[std::to_string(i + 1)] = ObjectType();
+  }
+  generate_object_parabola(object_list,n_objects);
+  
+  auto sorted_list = create_balanced_partition(object_list);
+
+  for (auto &s : sorted_list) {
+    for (auto &e : s.list) {
+      object_list.erase(e->first);
     }
-    std::cout << ")\n";
   }
+  EXPECT_EQ(object_list.size(), size_t{0});
 }
 
-void sort_objects(Object &obj, std::vector<ObjectList> &list,
-                  const int &n_partitions = 2) {
-
-  ObjectList sorted;
-  assign_to_ordered_list(obj, sorted);
-
-  if (!list.empty()) { // make reusable
-    list.clear();
+TEST(Partitioner, regenerate_after_new_bytes) {
+  size_t n_objects = 2 * num_partitions + 3;
+  ListType object_list;
+  for (size_t i = 0; i < n_objects; ++i) {
+    object_list[std::to_string(i + 1)] = ObjectType();
   }
-  list.resize(n_partitions);
-  partition(sorted.list, list);
+  generate_object_parabola(object_list,n_objects);
+  
+  auto sorted_list =
+      create_balanced_partition(object_list, num_partitions);
+
+  for (size_t i = 0; i < n_objects; ++i) {
+    auto w = object_list[std::to_string(i + 1)].status().get().bytes;
+    object_list[std::to_string(i + 1)].assign_weight(w + 100 * (n_objects - i));
+  }
+
+  auto new_sorted_list =
+      create_balanced_partition(object_list, num_partitions);
+
+  // either the partitions length or the elements must be different
+  bool is_same = true;
+  for (size_t i = 0; i < num_partitions; ++i) {
+    is_same &= (sorted_list[i].list.size() == new_sorted_list[i].list.size());
+  }
+  if (!is_same) {
+    EXPECT_TRUE(is_same);
+  } else {
+    for (size_t i = 0; i < num_partitions; ++i) {
+      is_same &= (sorted_list[i].list == new_sorted_list[i].list);
+    }
+  }
+  EXPECT_FALSE(is_same);
 }
 
-int main(int argc, char **argv) {
-  Object obj;
-  int n_partitions = 2;
-  int n_entries = 20;
-  if (argc > 1) {
-    n_partitions = std::atoi(argv[1]);
-  }
-  if (argc > 2) {
-    n_entries = std::atoi(argv[2]);
-  }
-
-  generate_object(obj, n_entries);
-  for (auto s : obj) {
-    std::cout << s.second << "  ";
-  }
-  std::cout << "\n";
-
-  std::vector<ObjectList> list;
-  sort_objects(obj, list, n_partitions);
-
-  print(list);
-
-  return 0;
-}
