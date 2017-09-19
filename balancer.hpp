@@ -12,7 +12,7 @@ public:
   using iterator = typename list_type::iterator;
   iterator begin() { return list.begin(); }
   iterator end() { return list.end(); }
-  
+
   void clear() {
     list.clear();
     weight = 0;
@@ -22,11 +22,11 @@ public:
     weight += item->second.status().get().bytes;
   }
   bool operator!=(const ObjectList &other) const {
-    if(list.size() != other.list.size()) {
+    if (list.size() != other.list.size()) {
       return true;
     } else {
-      for(auto i=0;i<list.size();++i) {
-        if( list[i] != other.list[i] ) {
+      for (auto i = 0; i < list.size(); ++i) {
+        if (list[i] != other.list[i]) {
           return true;
         }
       }
@@ -43,10 +43,14 @@ public:
   int weight{0};
 };
 
-template<class Object>
-typename ObjectList<Object>::iterator begin(ObjectList<Object>& list) { return list.begin(); }
-template<class Object>
-typename ObjectList<Object>::iterator end(ObjectList<Object>& list) { return list.end(); }
+template <class Object>
+typename ObjectList<Object>::iterator begin(ObjectList<Object> &list) {
+  return list.begin();
+}
+template <class Object>
+typename ObjectList<Object>::iterator end(ObjectList<Object> &list) {
+  return list.end();
+}
 
 template <class Object>
 void assign_to_ordered_list(Object &obj, ObjectList<Object> &sorted) {
@@ -113,16 +117,15 @@ create_flat_partition(Object &obj, const int &n_partitions = 2) {
 }
 
 template <class Object>
-const std::vector<ObjectList<Object>>&
-copy_partition(const std::vector<ObjectList<Object>>& source,
-               std::vector<ObjectList<Object>>& dest) {
-  if(source.size() != dest.size) {
+const std::vector<ObjectList<Object>> &
+copy_partition(const std::vector<ObjectList<Object>> &source,
+               std::vector<ObjectList<Object>> &dest) {
+  if (source.size() != dest.size) {
     std::cerr << "Partitions size differs: skip replacement\n";
   } else {
-    for(int i=0;i<source.size();++i) {
+    for (int i = 0; i < source.size(); ++i) {
       dest[i] = source[i];
     }
   }
   return dest;
 }
-

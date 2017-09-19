@@ -229,4 +229,3 @@ TEST(Partitioner, run_threads_and_update_partition) {
   }
   EXPECT_NE(has_changed, 0);
 }
-
