@@ -25,7 +25,7 @@ public:
     if (list.size() != other.list.size()) {
       return true;
     } else {
-      for (auto i = 0; i < list.size(); ++i) {
+      for (size_t i = 0; i < list.size(); ++i) {
         if (list[i] != other.list[i]) {
           return true;
         }
