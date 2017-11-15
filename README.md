@@ -2,4 +2,4 @@
 
 - [link](#another-heading) to the other heading
 
-## another heading
+## another-heading
